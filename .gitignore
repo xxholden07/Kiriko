@@ -1,0 +1,6 @@
+tapo_config.json
+recordings/
+timelapse/
+*.mp4
+.venv/
+__pycache__/
