@@ -27,7 +27,7 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Kiriko — Tapo C200",
-    page_icon="🎥",
+    page_icon="K",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -457,10 +457,10 @@ def main() -> None:
     # ── Sidebar ──────────────────────────────────────────────────────────
 
     with st.sidebar:
-        st.markdown("# 🎥 Kiriko")
+        st.markdown("# Kiriko")
 
         # Conexão
-        with st.expander("🔌 Conexão", expanded=not st.session_state.connected):
+        with st.expander("Conexao", expanded=not st.session_state.connected):
             st.text_input("IP da Câmera", key="cam_ip")
             st.text_input("Usuário", key="cam_user")
             st.text_input("Senha", type="password", key="cam_pass")
@@ -521,12 +521,12 @@ def main() -> None:
             st.divider()
 
             # Velocidade PTZ
-            st.slider("🕹️ Velocidade PTZ", 0.1, 1.0, step=0.1, key="ptz_speed")
+            st.slider("Velocidade PTZ", 0.1, 1.0, step=0.1, key="ptz_speed")
 
             st.divider()
 
             # Ajustes de imagem
-            st.markdown("### 🎚️ Imagem")
+            st.markdown("### Imagem")
             st.slider("Brilho", 0, 100, key="sl_bri", on_change=_on_brightness)
             st.slider("Contraste", 0, 100, key="sl_con", on_change=_on_contrast)
             st.slider("Nitidez", 0, 100, key="sl_sha", on_change=_on_sharpness)
@@ -535,7 +535,7 @@ def main() -> None:
             st.divider()
 
             # Visão noturna
-            st.markdown("### 🌙 Modo Noturno")
+            st.markdown("### Modo Noturno")
             st.selectbox(
                 "Visão Noturna (IR)",
                 CameraController.IR_MODES,
@@ -552,18 +552,18 @@ def main() -> None:
             st.divider()
 
             # Detecção facial
-            st.checkbox("👤 Detecção Facial", key="face_on")
+            st.checkbox("Deteccao Facial", key="face_on")
 
     # ── Conteúdo principal ───────────────────────────────────────────────
 
     st.markdown(
-        "<h1 style='margin-bottom:0'>📷 Kiriko <small style='font-size:0.4em;color:#888'>"
+        "<h1 style='margin-bottom:0'>Kiriko <small style='font-size:0.4em;color:#888'>"
         "Tapo C200</small></h1>",
         unsafe_allow_html=True,
     )
 
     if not st.session_state.connected:
-        st.info("👈 Configure a conexão na barra lateral e clique em **Conectar**")
+        st.info("Configure a conexao na barra lateral e clique em **Conectar**")
         st.markdown("""
 ### Como usar
 
@@ -598,7 +598,7 @@ onvif_port = 2020
 
     with ctrl_col:
         # PTZ
-        st.markdown("#### 🕹️ Movimento")
+        st.markdown("#### Movimento")
 
         r1c1, r1c2, r1c3 = st.columns(3)
         r1c1.button("↖", on_click=_ptz, args=(-1, 1), key="p_ul", use_container_width=True)
@@ -616,24 +616,24 @@ onvif_port = 2020
         r3c3.button("↘", on_click=_ptz, args=(1, -1), key="p_dr", use_container_width=True)
 
         # Zoom
-        st.markdown("#### 🔍 Zoom")
+        st.markdown("#### Zoom")
         zc1, zc2 = st.columns(2)
         zc1.button("➕ In", on_click=_ptz, args=(0, 0, 1), key="z_in", use_container_width=True)
         zc2.button("➖ Out", on_click=_ptz, args=(0, 0, -1), key="z_out", use_container_width=True)
 
         # Home
-        st.button("🏠 Home", on_click=_ptz_home, key="p_home", use_container_width=True)
+        st.button("Home", on_click=_ptz_home, key="p_home", use_container_width=True)
 
         st.divider()
 
         # Screenshot
-        st.markdown("#### 📸 Captura")
+        st.markdown("#### Captura")
         snap = st.session_state.get("_snap")
         if snap is not None:
             _, buf = cv2.imencode(".png", snap)
             ts = time.strftime("%Y%m%d_%H%M%S")
             st.download_button(
-                "📥 Baixar Screenshot",
+                "Baixar Screenshot",
                 data=buf.tobytes(),
                 file_name=f"kiriko_{ts}.png",
                 mime="image/png",
@@ -646,7 +646,7 @@ onvif_port = 2020
         def live_feed():
             frame = _grab()
             if frame is None:
-                st.warning("📡 Sem sinal da câmera — verifique a conexão")
+                st.warning("Sem sinal da camera — verifique a conexao")
                 return
 
             # Céu noturno (IA)
@@ -668,7 +668,7 @@ onvif_port = 2020
                             frame, "Face", (x, y - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA,
                         )
-                    st.caption(f"👤 {len(faces)} face(s) detectada(s)")
+                    st.caption(f"{len(faces)} face(s) detectada(s)")
 
             # Exibir frame
             st.image(frame, channels="BGR", use_container_width=True)
@@ -684,13 +684,13 @@ onvif_port = 2020
         sun = sun_tracker.update()
         if sun:
             st.divider()
-            st.markdown("### ☀️ Posição Solar — Araraquara")
+            st.markdown("### Posicao Solar — Araraquara")
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Estado", "☀️ Dia" if sun["is_day"] else "🌙 Noite")
+            c1.metric("Estado", "Dia" if sun["is_day"] else "Noite")
             c2.metric("Elevação", f"{sun['elevacao']:.1f}°")
             c3.metric("Azimute", f"{sun['azimute']:.1f}°")
             c4.metric("Nascer", sun["nascer"])
-            c5.metric("Pôr do Sol", sun["por"])
+            c5.metric("Por do Sol", sun["por"])
 
 
 if __name__ == "__main__":

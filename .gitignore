@@ -1,4 +1,5 @@
 tapo_config.json
+.streamlit/secrets.toml
 recordings/
 timelapse/
 *.mp4
