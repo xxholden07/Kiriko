@@ -14,6 +14,7 @@ Para Streamlit Cloud:
 import json
 import math
 import os
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -51,6 +52,8 @@ except ImportError:
 # ── Constantes ───────────────────────────────────────────────────────────────
 
 CONFIG_FILE = Path(__file__).resolve().parent / "tapo_config.json"
+RECORDING_DIR = Path(__file__).resolve().parent / "recordings"
+TIMELAPSE_DIR = Path(__file__).resolve().parent / "timelapse"
 FACE_CASCADE = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 OBSERVER_LAT = "-21.7946"
@@ -292,6 +295,139 @@ class NightEnhancer:
         return result
 
 
+# ── Gravação contínua ────────────────────────────────────────────────────
+
+class ContinuousRecorder:
+    """Grava video continuamente com segmentos de 1 hora."""
+
+    SEGMENT_SECS = 3600
+
+    def __init__(self) -> None:
+        self.active = False
+        self._lock = threading.Lock()
+        self._writer: cv2.VideoWriter | None = None
+        self._session_dir: Path | None = None
+        self._segment_index = 0
+        self._segment_start = 0.0
+        self._start_time = 0.0
+
+    def start(self) -> None:
+        with self._lock:
+            if self.active:
+                return
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            self._session_dir = RECORDING_DIR / ts
+            self._session_dir.mkdir(parents=True, exist_ok=True)
+            self._segment_index = 0
+            self._start_time = time.time()
+            self._segment_start = self._start_time
+            self.active = True
+
+    def stop(self) -> str:
+        with self._lock:
+            if self._writer:
+                self._writer.release()
+                self._writer = None
+            self.active = False
+            return str(self._session_dir) if self._session_dir else ""
+
+    def feed(self, frame: np.ndarray) -> None:
+        with self._lock:
+            if not self.active:
+                return
+            now = time.time()
+            h, w = frame.shape[:2]
+            if self._writer is None or (now - self._segment_start) >= self.SEGMENT_SECS:
+                if self._writer:
+                    self._writer.release()
+                seg_name = f"seg_{self._segment_index:04d}.mp4"
+                path = str(self._session_dir / seg_name)
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                self._writer = cv2.VideoWriter(path, fourcc, 15.0, (w, h))
+                self._segment_start = now
+                self._segment_index += 1
+            self._writer.write(frame)
+
+    @property
+    def elapsed(self) -> str:
+        if not self.active:
+            return "00:00:00"
+        secs = int(time.time() - self._start_time)
+        hh, rem = divmod(secs, 3600)
+        mm, ss = divmod(rem, 60)
+        return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+    @property
+    def segments(self) -> int:
+        return self._segment_index
+
+
+# ── Timelapse ────────────────────────────────────────────────────────────────
+
+class TimelapseRecorder:
+    """Captura frames em intervalo para montar timelapse."""
+
+    INTERVALS = [2.0, 5.0, 10.0, 30.0, 60.0]
+
+    def __init__(self, interval: float = 5.0) -> None:
+        self.interval = interval
+        self.active = False
+        self._lock = threading.Lock()
+        self._session_dir: Path | None = None
+        self._frame_count = 0
+        self._last_capture = 0.0
+
+    def start(self) -> None:
+        with self._lock:
+            if self.active:
+                return
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            self._session_dir = TIMELAPSE_DIR / ts
+            self._session_dir.mkdir(parents=True, exist_ok=True)
+            self._frame_count = 0
+            self._last_capture = 0.0
+            self.active = True
+
+    def stop(self) -> None:
+        with self._lock:
+            self.active = False
+
+    def tick(self, frame: np.ndarray) -> bool:
+        with self._lock:
+            if not self.active:
+                return False
+            now = time.time()
+            if now - self._last_capture < self.interval:
+                return False
+            self._last_capture = now
+            fname = self._session_dir / f"frame_{self._frame_count:06d}.jpg"
+            cv2.imwrite(str(fname), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            self._frame_count += 1
+            return True
+
+    @property
+    def frame_count(self) -> int:
+        return self._frame_count
+
+    def compile_video(self, fps: int = 30) -> str | None:
+        if not self._session_dir or self._frame_count == 0:
+            return None
+        frames = sorted(self._session_dir.glob("frame_*.jpg"))
+        if not frames:
+            return None
+        sample = cv2.imread(str(frames[0]))
+        h, w = sample.shape[:2]
+        out_path = str(self._session_dir / "timelapse.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(out_path, fourcc, fps, (w, h))
+        for fp in frames:
+            img = cv2.imread(str(fp))
+            if img is not None:
+                writer.write(img)
+        writer.release()
+        return out_path
+
+
 # ── Recursos cacheados ───────────────────────────────────────────────────────
 
 @st.cache_resource
@@ -330,6 +466,16 @@ def _init_enhancer():
 @st.cache_resource
 def _init_cascade():
     return cv2.CascadeClassifier(FACE_CASCADE)
+
+
+@st.cache_resource
+def _init_recorder():
+    return ContinuousRecorder()
+
+
+@st.cache_resource
+def _init_timelapse():
+    return TimelapseRecorder()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -453,6 +599,9 @@ def main() -> None:
             "sel_ir": "AUTO",
             "night_idx": 0,
             "face_on": False,
+            "rec_on": False,
+            "tl_on": False,
+            "tl_interval": 5.0,
         })
 
     # Auto-conectar se tem credenciais e ainda nao tentou
@@ -484,6 +633,9 @@ def main() -> None:
                 st.session_state.sl_sha = vals["sha"]
                 st.session_state.sl_sat = vals["sat"]
                 st.session_state.connected = True
+                # Auto-start recorders
+                _init_recorder().start()
+                _init_timelapse().start()
 
     # ── Sidebar ──────────────────────────────────────────────────────────
 
@@ -535,10 +687,15 @@ def main() -> None:
                                     st.session_state.sl_sha = vals["sha"]
                                     st.session_state.sl_sat = vals["sat"]
                                     st.session_state.connected = True
+                                    # Auto-start recorders
+                                    _init_recorder().start()
+                                    _init_timelapse().start()
                                     st.rerun()
             else:
                 st.success("Conectado")
-                if st.button("⏹ Desconectar", use_container_width=True):
+                if st.button("Desconectar", use_container_width=True):
+                    _init_recorder().stop()
+                    _init_timelapse().stop()
                     c = _ctrl()
                     if c:
                         c.stop()
@@ -584,6 +741,55 @@ def main() -> None:
 
             # Detecção facial
             st.checkbox("Deteccao Facial", key="face_on")
+
+            st.divider()
+
+            # Gravacao
+            st.markdown("### Gravacao")
+
+            rec = _init_recorder()
+            tl = _init_timelapse()
+
+            # Gravação contínua
+            if rec.active:
+                if st.button("Parar Gravacao", use_container_width=True):
+                    rec.stop()
+                    st.rerun()
+                st.caption(f"Gravando: {rec.elapsed} | Segmentos: {rec.segments}")
+            else:
+                if st.button("Iniciar Gravacao", type="primary", use_container_width=True):
+                    rec.start()
+                    st.rerun()
+
+            st.markdown("---")
+
+            # Timelapse
+            tl_interval = st.select_slider(
+                "Intervalo Timelapse (s)",
+                options=TimelapseRecorder.INTERVALS,
+                value=tl.interval,
+                key="tl_interval_slider",
+            )
+            tl.interval = tl_interval
+
+            if tl.active:
+                if st.button("Parar Timelapse", use_container_width=True):
+                    tl.stop()
+                    st.rerun()
+                st.caption(f"Timelapse: {tl.frame_count} frames")
+            else:
+                if st.button("Iniciar Timelapse", type="primary", use_container_width=True):
+                    tl.start()
+                    st.rerun()
+
+            if not tl.active and tl.frame_count > 0:
+                if st.button("Compilar Timelapse", use_container_width=True):
+                    with st.spinner("Compilando..."):
+                        path = tl.compile_video()
+                    if path:
+                        st.success(f"Video salvo: {path}")
+                    else:
+                        st.error("Erro ao compilar")
 
     # ── Conteúdo principal ───────────────────────────────────────────────
 
@@ -673,6 +879,12 @@ def main() -> None:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA,
                         )
                     st.caption(f"{len(faces)} face(s) detectada(s)")
+
+            # Alimentar gravadores
+            rec = _init_recorder()
+            tl = _init_timelapse()
+            rec.feed(frame)
+            tl.tick(frame)
 
             # Exibir frame
             st.image(frame, channels="BGR", use_container_width=True)
