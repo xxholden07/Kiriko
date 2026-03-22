@@ -633,9 +633,15 @@ def main() -> None:
                 st.session_state.sl_sha = vals["sha"]
                 st.session_state.sl_sat = vals["sat"]
                 st.session_state.connected = True
-                # Auto-start recorders
-                _init_recorder().start()
-                _init_timelapse().start()
+
+    # Garantir que gravadores estejam ativos quando conectado
+    if st.session_state.connected:
+        rec = _init_recorder()
+        tl = _init_timelapse()
+        if not rec.active:
+            rec.start()
+        if not tl.active:
+            tl.start()
 
     # ── Sidebar ──────────────────────────────────────────────────────────
 
@@ -687,9 +693,6 @@ def main() -> None:
                                     st.session_state.sl_sha = vals["sha"]
                                     st.session_state.sl_sat = vals["sat"]
                                     st.session_state.connected = True
-                                    # Auto-start recorders
-                                    _init_recorder().start()
-                                    _init_timelapse().start()
                                     st.rerun()
             else:
                 st.success("Conectado")
@@ -888,6 +891,15 @@ def main() -> None:
 
             # Exibir frame
             st.image(frame, channels="BGR", use_container_width=True)
+
+            # Status gravacao (atualiza junto com o feed)
+            parts = []
+            if rec.active:
+                parts.append(f"REC {rec.elapsed} | Seg: {rec.segments}")
+            if tl.active:
+                parts.append(f"TL: {tl.frame_count} frames")
+            if parts:
+                st.caption(" | ".join(parts))
 
             # Salvar para screenshot
             st.session_state["_snap"] = frame
