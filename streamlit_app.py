@@ -444,6 +444,7 @@ def main() -> None:
             "cam_stream": str(cfg.get("stream", "stream1")),
             "cam_port": int(cfg.get("onvif_port", 2020)),
             "connected": False,
+            "auto_tried": False,
             "ptz_speed": float(cfg.get("speed", 0.5)),
             "sl_bri": 50,
             "sl_con": 50,
@@ -453,6 +454,36 @@ def main() -> None:
             "night_idx": 0,
             "face_on": False,
         })
+
+    # Auto-conectar se tem credenciais e ainda nao tentou
+    if (
+        not st.session_state.connected
+        and not st.session_state.get("auto_tried")
+        and st.session_state.cam_ip
+        and st.session_state.cam_user
+    ):
+        st.session_state.auto_tried = True
+        result = _init_ctrl(
+            st.session_state.cam_ip,
+            st.session_state.cam_user,
+            st.session_state.cam_pass,
+            st.session_state.cam_port,
+        )
+        if isinstance(result, CameraController):
+            url = build_rtsp_url(
+                st.session_state.cam_ip,
+                st.session_state.cam_user,
+                st.session_state.cam_pass,
+                st.session_state.cam_stream,
+            )
+            cap = _init_cap(url)
+            if cap is not None:
+                vals = result.read_values()
+                st.session_state.sl_bri = vals["bri"]
+                st.session_state.sl_con = vals["con"]
+                st.session_state.sl_sha = vals["sha"]
+                st.session_state.sl_sat = vals["sat"]
+                st.session_state.connected = True
 
     # ── Sidebar ──────────────────────────────────────────────────────────
 
@@ -563,34 +594,7 @@ def main() -> None:
     )
 
     if not st.session_state.connected:
-        st.info("Configure a conexao na barra lateral e clique em **Conectar**")
-        st.markdown("""
-### Como usar
-
-**Localmente:**
-```bash
-pip install streamlit opencv-python-headless numpy onvif-zeep ephem
-streamlit run streamlit_app.py
-```
-
-**Streamlit Cloud:**
-1. Suba o código para um repositório GitHub
-2. Conecte ao [Streamlit Cloud](https://share.streamlit.io)
-3. Configure os **Secrets** no painel:
-
-```toml
-[tapo]
-ip = "SEU_IP_PUBLICO"
-user = "usuario"
-password = "senha"
-stream = "stream1"
-onvif_port = 2020
-```
-
-4. Faça **port-forward** no roteador:
-   - Porta **554** (RTSP)
-   - Porta **2020** (ONVIF)
-        """)
+        st.warning("Nao conectado. Configure IP, usuario e senha na barra lateral.")
         return
 
     # Layout: feed + controles
