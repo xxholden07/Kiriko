@@ -901,6 +901,7 @@ def main() -> None:
     controller.focus_background()
 
     timelapse = TimelapseRecorder(interval=5.0)
+    timelapse.toggle()  # Auto-iniciar timelapse
     night_enhancer = NightSkyEnhancer()
 
     # Gravacao continua: parar amanha as 07:00 BRT (10:00 UTC)
@@ -927,7 +928,7 @@ def main() -> None:
         "status_until": 0.0,
         "take_screenshot": False,
         "timelapse": timelapse,
-        "timelapse_active": False,
+        "timelapse_active": True,
         "timelapse_frames": 0,
         "night_enhancer": night_enhancer,
         "night_mode": "OFF",
